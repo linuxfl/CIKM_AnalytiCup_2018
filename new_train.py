@@ -13,13 +13,23 @@ from sklearn.neural_network import MLPClassifier
 from sklearn import preprocessing
 from sklearn import metrics
 
-feature = ['bow', 'lcs', 'postag', 'lenratio']
+feature = ['bow', 'lcs', 'postag', 'lenratio', '1-gramoverlap', '2-gramoverlap', '3-gramoverlap', 'doc2vecsim']
+#load doc2vec from file
+model = gensim.models.doc2vec.Doc2Vec.load("model.dat")
+
 def shuffle(X, y):
    m = X.shape[0]
    ind = np.arange(m)
    for i in range(7):
        np.random.shuffle(ind)
    return X[ind], y[ind]
+
+def euclidean(vec1, vec2):
+    num = len(vec1)
+    s = 0.0
+    for i in range(num):
+        s += (vec1[i] - vec2[i])**2
+    return math.sqrt(s)
 
 def cos(vec1, vec2):
     length = len(vec1)
@@ -96,7 +106,45 @@ def n_gram_over_lap(sentences, n):
     sen2 = sen[1].split(" ")
     len1 = len(sen1)
     len2 = len(sen2)
-    
+
+    if n == 1:
+        word_set1 = set(sen1)
+        word_set2 = set(sen2)
+
+        num1 = len(word_set1 & word_set2)
+        num2 = len(word_set1)
+        return num1 * 1.0 / num2
+    elif n == 2:
+        word_set1 = set()
+        word_set2 = set()
+        for i in range(len1):
+            if i == 0:
+                continue
+            word_set1.add(sen1[i-1] + sen1[i])
+        for i in range(len2):
+            if i == 0:
+                continue
+            word_set2.add(sen2[i-1] + sen2[i])
+        num1 = len(word_set1 & word_set2)
+        num2 = len(word_set1)
+        return num1 * 1.0 / num2
+    else:
+        word_set1 = set()
+        word_set2 = set()
+        for i in range(len1):
+            if i == 0 or i == 1:
+                continue
+            word_set1.add(sen1[i-2] + sen1[i-1] + sen1[i])
+        for i in range(len2):
+            if i == 0 or i == 1:
+                continue
+            word_set2.add(sen2[i-2] + sen2[i-1] + sen2[i])
+        num1 = len(word_set1 & word_set2)
+        num2 = len(word_set1)
+        if num2 == 0:
+            num2 = 1
+        return num1 * 1.0 / num2
+
     return 0
 
 def len_ratio(sentences):
@@ -111,6 +159,15 @@ def len_ratio(sentences):
     #return min(len1, len2) * 1.0 / max(len2, len1)
     return len1 * 1.0 / len2
 
+def get_doc2vec_sim(sentences):
+    sen = sentences.split("\001")
+    sen1 = sen[0].split(" ")
+    sen2 = sen[1].split(" ")
+
+    inferred_vector1 = model.infer_vector(sen1)
+    inferred_vector2 = model.infer_vector(sen2)
+    return euclidean(inferred_vector1, inferred_vector2)
+
 def read_data(filename):
     return pd.read_csv(filename, names=['label', 'sentences'], sep='\t')
 
@@ -120,14 +177,14 @@ def generate_feature(data):
     #POS Tags Longest Common Subsequence
     data['lcs'] = data.apply(lambda x: average_lcs(x['sentences']), axis=1)
     data['postag'] = data.apply(lambda x: lcs_pos(x['sentences']), axis=1)
-    #data['postag'] = data.apply(lambda x: standard_scaler(x), axis=1)
     #N-gramOverlap
     data['1-gramoverlap'] = data.apply(lambda x: n_gram_over_lap(x['sentences'], 1), axis=1)
     data['2-gramoverlap'] = data.apply(lambda x: n_gram_over_lap(x['sentences'], 2), axis=1)
     data['3-gramoverlap'] = data.apply(lambda x: n_gram_over_lap(x['sentences'], 3), axis=1)
     #length ratio
     data['lenratio'] = data.apply(lambda x: len_ratio(x['sentences']), axis=1)
-
+    #doc2vecsim
+    data['doc2vecsim'] = data.apply(lambda x: get_doc2vec_sim(x['sentences']), axis=1)
     #standard_scaler
     #scaler = preprocessing.StandardScaler()
     #data['norpostag'] = pd.Series(scaler.fit_transform(data['postag'].values.reshape(-1, 1)).reshape(-1))
@@ -144,12 +201,12 @@ def train_and_predict(X_train, Y_train, X_test):
     lr_model.fit(X_train, Y_train)
     pred = lr_model.predict_proba(X_test)[:,1]
 
-    gbdt_model = GradientBoostingClassifier(n_estimators=100, max_depth=8, loss="deviance")
+    gbdt_model = GradientBoostingClassifier(n_estimators=100, max_depth=5, loss="deviance")
     gbdt_model.fit(XX_train, YY_train)
     pred = gbdt_model.predict_proba(XX_test)[:,1]
     print "gbdt test logloss is {}".format(metrics.log_loss(YY_test, pred))
-    #gbdt_model.fit(X_train, Y_train)
-    #pred = gbdt_model.predict_proba(X_test)[:,1]
+    gbdt_model.fit(X_train, Y_train)
+    pred = gbdt_model.predict_proba(X_test)[:,1]
     
     #dtrain = xgb.DMatrix(XX_train, label=YY_train)
     #dtest = xgb.DMatrix(XX_test, label=YY_test)
