@@ -1,3 +1,4 @@
+#coding:utf-8
 words_dict = {}
 sum = 0
 with open("out.txt") as fin:
@@ -8,6 +9,7 @@ with open("out.txt") as fin:
         for senten in sentens:
             s = senten.split(" ")
             for w in s:
+                w = w.strip("¿?,.")
                 if w not in words_dict:
                     words_dict[w] = 0
                 words_dict[w] += 1
