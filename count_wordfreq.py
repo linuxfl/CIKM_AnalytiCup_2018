@@ -4,7 +4,7 @@ from tqdm import tqdm
 
 words_dict = {}
 sum = 0
-with open("out1.txt") as fin:
+with open("out.txt") as fin:
     for raw_line in fin:
         line = raw_line.strip("\n\r").split("\t")
         sentens = line[1].strip().split("\001")

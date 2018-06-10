@@ -7,6 +7,7 @@ import jieba, gensim
 import xgboost as xgb
 from tqdm import tqdm
 
+from scipy.stats import skew, kurtosis
 from fuzzywuzzy import fuzz
 from sklearn.model_selection import train_test_split
 from sklearn.linear_model import LogisticRegression
@@ -20,7 +21,8 @@ basic_feature = ['len_word_s1', 'len_word_s2', 'len_char_s2', 'len_char_s1', 'le
 fuzz_feature = ['fuzz_QRatio', 'fuzz_WRatio', 'fuzz_partial_ratio', 'fuzz_partial_token_set_ratio', 'fuzz_partial_token_sort_ratio', 'fuzz_token_set_ratio', 'fuzz_token_sort_ratio']
 gramoverlap_feature = ['1-gramoverlap', '2-gramoverlap', '3-gramoverlap']
 other_feature = ['bow', 'bow_tfidf','lcs', 'postag']
-word2vec_feature = ['cosine_distance', 'cityblock_distance', 'jaccard_distance', 'canberra_distance', 'euclidean_distance', 'minkowski_distance', 'braycurtis_distance']
+word2vec_feature = ['cityblock_distance', 'jaccard_distance', 'minkowski_distance', 'skew_s1vec', 'skew_s2vec', 'kur_s1vec', 'kur_s2vec']
+# ['cosine_distance','cityblock_distance', 'jaccard_distance', 'canberra_distance', 'euclidean_distance', 'minkowski_distance', 'braycurtis_distance']
 
 feature = []
 feature.extend(basic_feature)
@@ -301,13 +303,14 @@ def generate_feature(data):
     for i, sents in tqdm(enumerate(data.sentences.values)):
         sent = sents.split("\001")[1]
         sent2_vectors[i, :] = sent2vec(sent)
-    data['cosine_distance'] = [cosine(x, y) for (x, y) in zip(sent1_vectors, sent2_vectors)]
     data['cityblock_distance'] = [cityblock(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     data['jaccard_distance'] = [jaccard(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    data['canberra_distance'] = [canberra(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    data['euclidean_distance'] = [euclidean(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     data['minkowski_distance'] = [minkowski(x, y, 3) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    data['braycurtis_distance'] = [braycurtis(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['skew_s1vec'] = [skew(x) for x in np.nan_to_num(sent1_vectors)]
+    data['skew_s2vec'] = [skew(x) for x in np.nan_to_num(sent2_vectors)]
+    data['kur_s1vec'] = [kurtosis(x) for x in np.nan_to_num(sent1_vectors)]
+    data['kur_s2vec'] = [kurtosis(x) for x in np.nan_to_num(sent2_vectors)]
+
     #Bag-of-Words
     data['bow'] = data.apply(lambda x: bag_of_words(x['sentences']), axis=1)
     data['bow_tfidf'] = data.apply(lambda x: bag_of_words_tfidf(x['sentences']), axis=1)
@@ -330,7 +333,7 @@ def train_and_predict(X_train, Y_train, X_test):
     lr_model.fit(X_train, Y_train)
     pred = lr_model.predict_proba(X_test)[:,1]
 
-    gbdt_model = GradientBoostingClassifier(n_estimators=150, max_depth=7, loss="deviance")
+    gbdt_model = GradientBoostingClassifier(n_estimators=200, max_depth=7, loss="deviance")
     gbdt_model.fit(XX_train, YY_train)
     pred = gbdt_model.predict_proba(XX_test)[:,1]
     print "gbdt test logloss is {}".format(metrics.log_loss(YY_test, pred))
@@ -355,7 +358,6 @@ if __name__ == '__main__':
         exit()
     data = read_data(sys.argv[1])
     train_data = generate_feature(data)
-
     X_train = train_data[feature][train_data.label >= 0].values
     y_train = train_data[train_data.label >= 0]['label'].values
     X_test = train_data[feature][train_data.label == -1].values
