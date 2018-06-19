@@ -21,13 +21,20 @@ from sklearn.model_selection import cross_val_score
 from scipy.spatial.distance import cosine, cityblock, jaccard, canberra, euclidean, minkowski, braycurtis
 from sklearn.metrics.pairwise import rbf_kernel, polynomial_kernel, laplacian_kernel, sigmoid_kernel
 basic_feature = ['len_word_s1', 'len_word_s2', 'len_char_s2', 'len_char_s1', 'len_ratio']
+
 fuzz_feature = ['fuzz_QRatio', 'fuzz_WRatio', 'fuzz_partial_ratio', 'fuzz_partial_token_set_ratio', 'fuzz_partial_token_sort_ratio', 'fuzz_token_set_ratio', 'fuzz_token_sort_ratio']
+
 gramoverlap_feature = ['1-gramoverlap', '2-gramoverlap', '3-gramoverlap', '2-gramoverlap_char', '3-gramoverlap_char', '4-gramoverlap_char', '5-gramoverlap_char']
-other_feature = ['bow', 'bow_tfidf', 'lcs_diff']
-sequence_feature = ['long_common_sequence', 'long_common_prefix', 'long_common_suffix', 'long_common_substring', 'long_common_substring']
-#, 'levenshtein_distance']
-word2vec_feature = ['cityblock_distance', 'jaccard_distance', 'minkowski_distance', 'skew_s1vec', 'skew_s2vec', 'kur_s1vec', 'kur_s2vec', 'pearson_coff', 'spearman_coff', 'kendalltau_coff']
-#, 'polynomial_kernel', 'rbf_kernel',  'laplacian_kernel']
+
+other_feature = ['bow', 'bow_tfidf', 'lcs_diff' 'has_no_word']
+
+sequence_feature = ['long_common_sequence', 'long_common_prefix', 'long_common_suffix', 'long_common_substring', 'long_common_substring', 'levenshtein_distance']
+
+word2vec_feature = ['cityblock_distance','cosine_distance', 'euclidean_distance', 'canberra_distance', 'braycurtis_distance', 'jaccard_distance', 'minkowski_distance', 'skew_s1vec', 'skew_s2vec', 'kur_s1vec', 'kur_s2vec', 'pearson_coff', 'spearman_coff', 'kendalltau_coff', 'sigmoid_kernel', 'polynomial_kernel', 'rbf_kernel',  'laplacian_kernel']
+
+word2vec_feature_ave = ['cityblock_distance_ave','cosine_distance_ave', 'euclidean_distance_ave', 'canberra_distance_ave', 'braycurtis_distance_ave', 'jaccard_distance_ave', 'minkowski_distance_ave', 'skew_s1vec_ave', 'skew_s2vec_ave', 'kur_s1vec_ave', 'kur_s2vec_ave', 'pearson_coff_ave', 'spearman_coff_ave', 'kendalltau_coff_ave', 'sigmoid_kernel_ave', 'polynomial_kernel_ave', 'rbf_kernel_ave',  'laplacian_kernel_ave']
+
+word2vec_feature_ave_idf = ['cityblock_distance_ave_idf','cosine_distance_ave_idf', 'euclidean_distance_ave_idf', 'canberra_distance_ave_idf', 'braycurtis_distance_ave_idf', 'jaccard_distance_ave_idf', 'minkowski_distance_ave_idf', 'skew_s1vec_ave_idf', 'skew_s2vec_ave_idf', 'kur_s1vec_ave_idf', 'kur_s2vec_ave_idf', 'pearson_coff_ave_idf', 'spearman_coff_ave_idf', 'kendalltau_coff_ave_idf', 'sigmoid_kernel_ave_idf', 'polynomial_kernel_ave_idf', 'rbf_kernel_ave_idf',  'laplacian_kernel_ave_idf']
 
 feature = []
 feature.extend(basic_feature)
@@ -180,10 +187,11 @@ def long_common_suffix(sentences):
     sen2 = sen[1].split(" ")
     len1 = len(sen1)
     len2 = len(sen2)
-
+    sen1.reverse()
+    sen2.reverse()
     min_len = min(len1, len2)
     max_suffix = 0
-    for i in range(min_len, 0, 1):
+    for i in range(min_len):
         if sen1[i] == sen2[i]:
             max_suffix += 1
 
@@ -356,14 +364,20 @@ def len_ratio(sentences):
         len2 == 1
     return len1 * 1.0 / len2
 
-def get_doc2vec_sim(sentences):
+def has_no_word(sentences):
     sen = sentences.split("\001")
     sen1 = sen[0].split(" ")
     sen2 = sen[1].split(" ")
 
-    inferred_vector1 = model.infer_vector(sen1)
-    inferred_vector2 = model.infer_vector(sen2)
-    return euclidean(inferred_vector1, inferred_vector2)
+    if "no" in sen1 and "no" in sen2:
+        return 1
+    if "no" not in sen1 and "no" not in sen2:
+        return 1
+
+    if "no" not in sen1 and "no" in sen2:
+        return 0
+    if "no" in sen1 and "no" not in sen2:
+        return 0
 
 def read_data(filename):
     return pd.read_csv(filename, names=['label', 'sentences'], sep='\t')
@@ -408,6 +422,32 @@ def sent2vec(sen):
     v = M.sum(axis=0)
     return v / np.sqrt((v**2).sum())
 
+def sent2vec_ave(sen):
+    M = []
+    words = sen.split()
+    for w in words:
+        try:
+            M.append(word2vec_dict[w])
+        except:
+            continue
+    M = np.array(M)
+    num = M.shape[0]
+    v = M.sum(axis=0)
+    return v / num
+
+def sent2vec_ave_idf(sen):
+    M = []
+    words = sen.split()
+    for w in words:
+        try:
+            M.append([ words_dict[w] * x for x in word2vec_dict[w] ])
+        except:
+            continue
+    M = np.array(M)
+    num = M.shape[0]
+    v = M.sum(axis=0)
+    return v / num
+
 def generate_feature(data):
     """
         basic feature
@@ -442,24 +482,89 @@ def generate_feature(data):
         sent2_vectors[i, :] = sent2vec(sent)
     data['cityblock_distance'] = [cityblock(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     data['jaccard_distance'] = [jaccard(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    #data['cosine_distance'] = [cosine(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    #data['canberra_distance'] = [canberra(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    #data['euclidean_distance'] = [euclidean(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    #data['braycurtis_distance'] = [braycurtis(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['cosine_distance'] = [cosine(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['canberra_distance'] = [canberra(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['euclidean_distance'] = [euclidean(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['braycurtis_distance'] = [braycurtis(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     data['minkowski_distance'] = [minkowski(x, y, 3) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     data['pearson_coff'] = [scipy.stats.pearsonr(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     data['spearman_coff'] = [scipy.stats.spearmanr(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     data['kendalltau_coff'] = [scipy.stats.kendalltau(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     
-    #data['polynomial_kernel'] = [polynomial_kernel(x.reshape(1, -1), y.reshape(1, -1)) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    #data['sigmoid_kernel'] = [sigmoid_kernel(x.reshape(1, -1), y.reshape(-1, 1)) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    #data['rbf_kernel'] = [rbf_kernel(x.reshape(-1, 1), y.reshape(-1, 1)) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-    #data['laplacian_kernel'] = [laplacian_kernel(x.reshape(-1, 1), y.reshape(-1, 1)) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
-
+    data['polynomial_kernel'] = [polynomial_kernel(x.reshape(1, -1), y.reshape(1, -1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['sigmoid_kernel'] = [sigmoid_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['rbf_kernel'] = [rbf_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['laplacian_kernel'] = [laplacian_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
     data['skew_s1vec'] = [skew(x) for x in np.nan_to_num(sent1_vectors)]
     data['skew_s2vec'] = [skew(x) for x in np.nan_to_num(sent2_vectors)]
     data['kur_s1vec'] = [kurtosis(x) for x in np.nan_to_num(sent1_vectors)]
     data['kur_s2vec'] = [kurtosis(x) for x in np.nan_to_num(sent2_vectors)]
+    """
+        word2vec feature average and weighted idf
+    """
+    sent1_vectors = np.zeros((data.shape[0], 300))
+    for i, sents in tqdm(enumerate(data.sentences.values)):
+        sent = sents.split("\001")[0]
+        sent1_vectors[i, :] = sent2vec_ave(sent)
+
+    sent2_vectors = np.zeros((data.shape[0], 300))
+    for i, sents in tqdm(enumerate(data.sentences.values)):
+        sent = sents.split("\001")[1]
+        sent2_vectors[i, :] = sent2vec_ave(sent)
+    
+    data['cityblock_distance_ave'] = [cityblock(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['jaccard_distance_ave'] = [jaccard(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['cosine_distance_ave'] = [cosine(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['canberra_distance_ave'] = [canberra(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['euclidean_distance_ave'] = [euclidean(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['braycurtis_distance_ave'] = [braycurtis(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['minkowski_distance_ave'] = [minkowski(x, y, 3) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['pearson_coff_ave'] = [scipy.stats.pearsonr(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['spearman_coff_ave'] = [scipy.stats.spearmanr(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['kendalltau_coff_ave'] = [scipy.stats.kendalltau(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    
+    data['polynomial_kernel_ave'] = [polynomial_kernel(x.reshape(1, -1), y.reshape(1, -1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['sigmoid_kernel_ave'] = [sigmoid_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['rbf_kernel_ave'] = [rbf_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['laplacian_kernel_ave'] = [laplacian_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['skew_s1vec_ave'] = [skew(x) for x in np.nan_to_num(sent1_vectors)]
+    data['skew_s2vec_ave'] = [skew(x) for x in np.nan_to_num(sent2_vectors)]
+    data['kur_s1vec_ave'] = [kurtosis(x) for x in np.nan_to_num(sent1_vectors)]
+    data['kur_s2vec_ave'] = [kurtosis(x) for x in np.nan_to_num(sent2_vectors)]
+ 
+    """
+        word2vec feature average and weighted idf
+    """
+    sent1_vectors = np.zeros((data.shape[0], 300))
+    for i, sents in tqdm(enumerate(data.sentences.values)):
+        sent = sents.split("\001")[0]
+        sent1_vectors[i, :] = sent2vec_ave_idf(sent)
+
+    sent2_vectors = np.zeros((data.shape[0], 300))
+    for i, sents in tqdm(enumerate(data.sentences.values)):
+        sent = sents.split("\001")[1]
+        sent2_vectors[i, :] = sent2vec_ave_idf(sent)
+    
+    data['cityblock_distance_ave_idf'] = [cityblock(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['jaccard_distance_ave_idf'] = [jaccard(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['cosine_distance_ave_idf'] = [cosine(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['canberra_distance_ave_idf'] = [canberra(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['euclidean_distance_ave_idf'] = [euclidean(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['braycurtis_distance_ave_idf'] = [braycurtis(x, y) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['minkowski_distance_ave_idf'] = [minkowski(x, y, 3) for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['pearson_coff_ave_idf'] = [scipy.stats.pearsonr(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['spearman_coff_ave_idf'] = [scipy.stats.spearmanr(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['kendalltau_coff_ave_idf'] = [scipy.stats.kendalltau(x, y)[0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    
+    data['polynomial_kernel_ave_idf'] = [polynomial_kernel(x.reshape(1, -1), y.reshape(1, -1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['sigmoid_kernel_ave_idf'] = [sigmoid_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['rbf_kernel_ave_idf'] = [rbf_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['laplacian_kernel_ave'] = [laplacian_kernel(x.reshape(-1, 1), y.reshape(-1, 1))[0][0] for (x, y) in zip(np.nan_to_num(sent1_vectors), np.nan_to_num(sent2_vectors))]
+    data['skew_s1vec_ave_idf'] = [skew(x) for x in np.nan_to_num(sent1_vectors)]
+    data['skew_s2vec_ave_idf'] = [skew(x) for x in np.nan_to_num(sent2_vectors)]
+    data['kur_s1vec_ave_idf'] = [kurtosis(x) for x in np.nan_to_num(sent1_vectors)]
+    data['kur_s2vec_ave_idf'] = [kurtosis(x) for x in np.nan_to_num(sent2_vectors)]
+ 
     """
         Sequence Features
     """
@@ -469,7 +574,8 @@ def generate_feature(data):
     data['long_common_substring'] = data.apply(lambda x: long_common_substring(x['sentences']), axis=1)
     data['levenshtein_distance'] = data.apply(lambda x: levenshtein_distance(x['sentences']), axis=1)
 
-    #Bag-of-Words
+    #other featre
+    data['has_no_word'] = data.apply(lambda x: has_no_word(x['sentences']), axis=1)
     data['bow'] = data.apply(lambda x: bag_of_words(x['sentences']), axis=1)
     data['bow_tfidf'] = data.apply(lambda x: bag_of_words_tfidf(x['sentences']), axis=1)
     data['lcs_diff'] = data.apply(lambda x: lcs_diff(x['sentences']), axis=1)
@@ -482,43 +588,7 @@ def generate_feature(data):
     data['4-gramoverlap_char'] = data.apply(lambda x: n_gram_over_lap_char(x['sentences'], 4), axis=1)
     data['5-gramoverlap_char'] = data.apply(lambda x: n_gram_over_lap_char(x['sentences'], 5), axis=1)
     return data
- 
 
-def train_and_predict(X_train, Y_train, X_test):
-    #XX_train, XX_test, YY_train, YY_test = train_test_split(X_train, Y_train, random_state=2018)
-    """
-    lr_model = LogisticRegression()
-    lr_model.fit(XX_train, YY_train)
-    pred = lr_model.predict_proba(XX_test)[:,1]
-    print "lr test logloss is {}".format(metrics.log_loss(YY_test, pred))
-    X_train, Y_train = shuffle(X_train, Y_train)
-    lr_model.fit(X_train, Y_train)
-    pred = lr_model.predict_proba(X_test)[:,1]
-    """ 
-    gbdt_model = GradientBoostingClassifier(n_estimators=150, max_depth=6, loss="deviance")
-    logloss = cross_val_score(gbdt_model, X_train, Y_train, cv=5, scoring='neg_log_loss')
-    print -logloss.mean()
-    #print "gbdt test logloss is {}".format(metrics.log_loss(YY_test, pred1))
-    #gbdt_model.fit(X_train, Y_train)
-    #pred = gbdt_model.predict_proba(X_test)[:,1]
-    #np.savetxt("result.txt", pred, fmt='%1.6f')
-    """
-    rf_model = RandomForestClassifier(n_estimators=500)
-    logloss = cross_val_score(rf_model, X_train, Y_train, cv=10, scoring='neg_log_loss')
-    print -logloss.mean()
-    rf_model.fit(X_train, Y_train)
-    pred = rf_model.predict_proba(X_test)[:,1]
-    np.savetxt("result.txt", pred, fmt='%1.6f')
-    dtrain = xgb.DMatrix(XX_train, label=YY_train)
-    dtest = xgb.DMatrix(XX_test, label=YY_test)
-    evallist = [(dtest, 'eval'), (dtrain, 'train')]
-    param = {'max_depth': 5, 'lambda':1.1, 'silent': 1, 'objective': 'binary:logistic'}
-    param['nthread'] = 4
-    param['eval_metric'] = 'logloss'
-    bst = xgb.train(param, dtrain, 150, evallist)
-    pred = bst.predict(dtest)
-    print "gbdt test logloss is {}".format(metrics.log_loss(YY_test, pred))
-    """
 if __name__ == '__main__':
     
     if len(sys.argv) < 2:
@@ -526,8 +596,4 @@ if __name__ == '__main__':
         exit()
     data = read_data(sys.argv[1])
     train_data = generate_feature(data)
-    X_train = train_data[feature][train_data.label >= 0].values
-    y_train = train_data[train_data.label >= 0]['label'].values
-    X_test = train_data[feature][train_data.label == -1].values
-    print X_train.shape, y_train.shape, X_test.shape
-    train_and_predict(X_train, y_train, X_test)
+    data.to_csv('train.dat', index=False)
