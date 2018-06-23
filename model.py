@@ -10,21 +10,18 @@ import numpy as np
 import numpy
 basic_feature = ['len_word_s1', 'len_word_s2', 'len_char_s2', 'len_char_s1', 'len_ratio']
 fuzz_feature = ['fuzz_QRatio', 'fuzz_WRatio', 'fuzz_partial_ratio', 'fuzz_partial_token_set_ratio', 'fuzz_partial_token_sort_ratio', 'fuzz_token_set_ratio', 'fuzz_token_sort_ratio']
-gramoverlap_feature = ['1-gramoverlap', '2-gramoverlap', '3-gramoverlap', '2-gramoverlap_char', '3-gramoverlap_char', '4-gramoverlap_char', '5-gramoverlap_char']
+gramoverlap_feature = ['1-gramoverlap_word', '2-gramoverlap_word', '3-gramoverlap_word', '2-gramoverlap_char', '3-gramoverlap_char', '4-gramoverlap_char', '5-gramoverlap_char']
 other_feature = ['bow', 'bow_tfidf', 'lcs_diff', 'has_no_word']
 sequence_feature = ['long_common_sequence', 'long_common_substring', 'long_common_suffix', 'long_common_prefix']
-#'levenshtein_distance']
-word2vec_feature = ['cityblock_distance', 'canberra_distance', 'jaccard_distance', 'minkowski_distance', 'skew_s1vec', 'skew_s2vec', 'kur_s1vec', 'kur_s2vec', 'kendalltau_coff']
-word2vec_feature_ave = ['cosine_distance_ave', 'canberra_distance_ave', 'jaccard_distance_ave', 'minkowski_distance_ave', 'skew_s1vec_ave', 'skew_s2vec_ave', 'kur_s1vec_ave', 'kur_s2vec_ave', 'kendalltau_coff_ave']
+#, 'levenshtein_distance']
 word2vec_feature_ave_idf = ['cosine_distance_ave_idf', 'canberra_distance_ave_idf', 'jaccard_distance_ave_idf', 'minkowski_distance_ave_idf', 'skew_s1vec_ave_idf', 'skew_s2vec_ave_idf', 'kur_s1vec_ave_idf', 'kur_s2vec_ave_idf', 'kendalltau_coff_ave_idf']
+
 feature = []
 feature.extend(basic_feature) #0.6479294163387835
 feature.extend(fuzz_feature) #0.48524011604707845
 feature.extend(gramoverlap_feature) #0.5050180567638318
 feature.extend(sequence_feature) #0.6085519713571158
 feature.extend(other_feature) #0.5387043318754241
-feature.extend(word2vec_feature) #0.4807049002728168
-feature.extend(word2vec_feature_ave)
 feature.extend(word2vec_feature_ave_idf)
 
 print "%s features"%(len(feature))
@@ -36,6 +33,7 @@ def shuffle(X, y):
    return X[ind], y[ind]
 
 train_data = pd.read_csv('train.dat')
+train_data.fillna(0, inplace=True)
 X_test = train_data[feature][train_data.label == -1].values
 
 train_data = train_data[train_data.label >= 0]
@@ -43,15 +41,15 @@ X_train = train_data[feature][train_data.label >= 0].values
 Y_train = train_data[train_data.label >= 0]['label'].values
 
 
-rf_model = RandomForestClassifier(n_estimators=600, n_jobs=2)
+rf_model = RandomForestClassifier(n_estimators=600, n_jobs=4)
 logloss = cross_val_score(rf_model, X_train, Y_train, cv=5, scoring='neg_log_loss')
 print -logloss.mean()
 
-#rf_model.fit(X_train, Y_train)
-#pred = rf_model.predict_proba(X_test)[:,1]
-#np.savetxt("result.txt", pred, fmt='%1.6f')
+rf_model.fit(X_train, Y_train)
+pred = rf_model.predict_proba(X_test)[:,1]
+np.savetxt("result.txt", pred, fmt='%1.6f')
 
-gbdt_model = GradientBoostingClassifier(n_estimators=150, max_depth=6, loss="deviance")
+gbdt_model = GradientBoostingClassifier(n_estimators=100, max_depth=6, loss="deviance")
 logloss = cross_val_score(gbdt_model, X_train, Y_train, cv=5, scoring='neg_log_loss')
 print -logloss.mean()
 
